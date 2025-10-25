@@ -208,7 +208,8 @@ function module.RollMonster(playerData, ownerId, isNPC, options)
 	}
 
 	-- CRITICAL FIX: If ownerId is provided, save to playerData with explicit assignments
-	-- to ensure proper proxy tracking for persistence
+	-- The TrackValues proxy requires direct field assignment to trigger __newindex for tracking.
+	-- Loop-based assignment (for k,v in pairs) may not properly trigger proxy persistence.
 	if ownerId then
 		local playerData = _G.DATA:Get(ownerId)
 		if playerData then
@@ -232,8 +233,10 @@ function module.RollMonster(playerData, ownerId, isNPC, options)
 			playerData.CareMistakes = data.CareMistakes
 			playerData.Element = data.Element
 			
-			-- Handle nested tables (Stats, Moves, History, Info, Appearance)
-			-- For Stats: assign each stat individually to ensure proxy tracking
+			-- Handle nested tables: Stats requires per-field assignment for proper tracking
+			-- because each stat is a separate value that needs individual proxy tracking.
+			-- Other nested tables (Moves, History, Info, Appearance) can be assigned as whole
+			-- tables since they are replaced entirely rather than having individual fields updated.
 			if data.Stats then
 				playerData.Stats = playerData.Stats or {}
 				for statKey, statValue in pairs(data.Stats) do

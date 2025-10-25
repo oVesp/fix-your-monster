@@ -500,7 +500,8 @@ function EvolutionManager.CompleteEvolution(player: Player, newRaceName: string,
 	local newStage = Races:GetStage(newRaceName)
 
 	-- CRITICAL FIX: Update playerData with explicit assignments to ensure proxy persistence
-	-- The proxy system requires direct field assignment to track changes
+	-- The TrackValues proxy requires direct field assignment to trigger __newindex for tracking.
+	-- Storing Races:GetStage(newRaceName) in a local variable first ensures proper assignment.
 	playerData.Race = newRaceName
 	playerData.Stage = newStage
 
