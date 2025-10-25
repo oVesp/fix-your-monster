@@ -497,22 +497,20 @@ function EvolutionManager.CompleteEvolution(player: Player, newRaceName: string,
 
 	local oldRace = playerData.Race
 	local oldStage = playerData.Stage
+	local newStage = Races:GetStage(newRaceName)
 
-	-- Atualiza playerData
+	-- CRITICAL FIX: Update playerData with explicit assignments to ensure proxy persistence
+	-- The TrackValues proxy requires direct field assignment to trigger __newindex for tracking.
+	-- Storing Races:GetStage(newRaceName) in a local variable first ensures proper assignment.
 	playerData.Race = newRaceName
-	playerData.Stage = Races:GetStage(newRaceName)
+	playerData.Stage = newStage
 
 	-- DEBUG: Verify the update
 	print(string.format("[Evolution] %s: %s(%s) -> %s(%s)", 
-		player.Name, oldRace, oldStage, newRaceName, playerData.Stage))
+		player.Name, oldRace, oldStage, newRaceName, newStage))
 
-	-- Ensure the data is persisted
-	if _G.DATA and _G.DATA.ForceSave then
-		_G.DATA:ForceSave(player.UserId)
-	end
-	-- snapshot para cálculo (pairs pode falhar direto no proxy)
-
-	applyEvolutionGainsInPlace(playerData.Stats, playerData.Stage)
+	-- Apply evolution stat gains to the Stats table (in-place modification for proxy tracking)
+	applyEvolutionGainsInPlace(playerData.Stats, newStage)
 
 
 
