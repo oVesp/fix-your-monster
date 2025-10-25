@@ -207,12 +207,60 @@ function module.RollMonster(playerData, ownerId, isNPC, options)
 		Element = "None"
 	}
 
+	-- CRITICAL FIX: If ownerId is provided, save to playerData with explicit assignments
+	-- to ensure proper proxy tracking for persistence
 	if ownerId then
 		local playerData = _G.DATA:Get(ownerId)
 		if playerData then
-			for key, value in pairs(data) do
-				playerData[key] = value
+			-- Use explicit field assignments instead of loop to ensure proxy tracking
+			playerData.id = data.id
+			playerData.Name = data.Name
+			playerData.Race = data.Race
+			playerData.Stage = data.Stage
+			playerData.Level = data.Level
+			playerData.BaseRaceFamily = data.BaseRaceFamily
+			playerData.OwnerId = data.OwnerId
+			playerData.Personality = data.Personality
+			playerData.State = data.State
+			playerData.Version = data.Version
+			playerData.LastUpdatePlayed = data.LastUpdatePlayed
+			playerData.Alignment = data.Alignment
+			playerData.Age = data.Age
+			playerData.Bond = data.Bond
+			playerData.Wins = data.Wins
+			playerData.SessionTime = data.SessionTime
+			playerData.CareMistakes = data.CareMistakes
+			playerData.Element = data.Element
+			
+			-- Handle nested tables (Stats, Moves, History, Info, Appearance)
+			-- For Stats: assign each stat individually to ensure proxy tracking
+			if data.Stats then
+				playerData.Stats = playerData.Stats or {}
+				for statKey, statValue in pairs(data.Stats) do
+					playerData.Stats[statKey] = statValue
+				end
 			end
+			
+			-- For Moves: replace the entire table
+			if data.Moves then
+				playerData.Moves = data.Moves
+			end
+			
+			-- For History: replace the entire table
+			if data.History then
+				playerData.History = data.History
+			end
+			
+			-- For Info: assign as a whole (it's a small nested table)
+			if data.Info then
+				playerData.Info = data.Info
+			end
+			
+			-- For Appearance: assign as a whole
+			if data.Appearance then
+				playerData.Appearance = data.Appearance
+			end
+			
 			print("Automatically saved rolled monster to player data")
 		else
 			warn("Player data not found for ownerId: " .. tostring(ownerId))
