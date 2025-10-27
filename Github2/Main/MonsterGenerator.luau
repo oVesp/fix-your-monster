@@ -190,7 +190,7 @@ function module.RollMonster(playerData, ownerId, isNPC, options)
 		Stats = scaledStats,
 		Moves = moves,
 		State = "Idle",
-		Version = "1.0",
+		Version = "2.0.0", -- Updated to match new evolution system
 		LastUpdatePlayed = tostring(os.time()),
 		History = {race},
 		Info = {
