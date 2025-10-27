@@ -401,6 +401,16 @@ function EvolutionManager.StartEvolution(player: Player, playerData, trigger, op
 		return false, "No player data"
 	end
 
+	-- Ensure evolution data is initialized
+	local ok, EvolutionInit = pcall(function()
+		return require(RS.Modules.Evolution.EvolutionInit)
+	end)
+	
+	if ok and EvolutionInit then
+		local seed = player.UserId and EvolutionInit.GetSeedFromUserId(player.UserId) or nil
+		EvolutionInit.InitializeAll(playerData, seed)
+	end
+
 	-- Decide evolução
 	local ok, targetOrReason, chance = EvolutionManager.TryEvolve(playerData, trigger, opts)
 	if not ok then

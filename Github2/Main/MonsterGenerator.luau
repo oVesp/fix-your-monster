@@ -297,6 +297,17 @@ function module.BuildMonster(monsterData, ownerId, options)
 	options = options or {}
 	monsterData = monsterData or module.RollMonster(nil, ownerId, nil, options)
 
+	-- Initialize evolution system data if not present
+	local ok, EvolutionInit = pcall(function()
+		return require(game.ReplicatedStorage.Modules.Evolution.EvolutionInit)
+	end)
+	
+	if ok and EvolutionInit then
+		-- Initialize or migrate monster data for new evolution system
+		local seed = ownerId and EvolutionInit.GetSeedFromUserId(ownerId) or nil
+		EvolutionInit.FullMigration(monsterData, seed)
+	end
+
 	local isPlayerOwned = ownerId ~= nil
 	local uid = isPlayerOwned and tostring(ownerId) or nil
 
