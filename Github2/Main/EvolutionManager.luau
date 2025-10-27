@@ -33,6 +33,14 @@ local Races = require(RS.Modules.Races)
 local EvoDef = require(RS.Modules.EvolutionDefs)
 local MoveUnlocks = require(RS.Modules.MoveUnlocks)
 
+-- New centralized evolution system
+local EvolutionTree
+local StatCalc
+local ok1, result1 = pcall(function() return require(RS.Modules.Evolution.EvolutionTree) end)
+if ok1 then EvolutionTree = result1 end
+local ok2, result2 = pcall(function() return require(RS.Modules.Stats.StatCalc) end)
+if ok2 then StatCalc = result2 end
+
 
 -- Config
 local EFFECT_DURATION = 2.0 -- segundos antes de aplicar a evolução (tempo do VFX)
@@ -250,13 +258,49 @@ end
 
 -- ===== Core API =====
 
--- Decide a evolução com base em Races:GetEvolutions(race) com sistema de chance
+-- Decide a evolução com base em EvolutionTree API (centralized system)
 function EvolutionManager.TryEvolve(monsterData, trigger, opts)
 	local currentRace = monsterData and monsterData.Race
 	if not currentRace then
 		return false, "No current race on monsterData"
 	end
 
+	-- Try using new centralized EvolutionTree system first
+	if EvolutionTree then
+		-- Check if can evolve
+		if not EvolutionTree.CanEvolve(monsterData) then
+			-- Get details about why evolution failed
+			local options = EvolutionTree.GetEvolutionOptions(monsterData)
+			if #options == 0 then
+				return false, ("No evolutions available for %s"):format(tostring(currentRace))
+			end
+			
+			-- Check if already attempted this level
+			if EvolutionTree.HasAttemptedEvolutionThisLevel(monsterData) then
+				return false, "Already attempted evolution this level"
+			end
+			
+			-- Find first failed option to get reason
+			for _, opt in ipairs(options) do
+				if not opt.gatesOk and opt.meta and opt.meta.failureReasons then
+					return false, table.concat(opt.meta.failureReasons, ", ")
+				end
+			end
+			
+			return false, "Evolution requirements not met"
+		end
+		
+		-- Attempt evolution
+		local result = EvolutionTree.AttemptEvolve(monsterData, opts)
+		
+		if result.ok then
+			return true, result.evolvedTo, result.successChance
+		else
+			return false, result.reason or "Evolution failed"
+		end
+	end
+	
+	-- Fallback to old system if EvolutionTree not available
 	local options = Races:GetEvolutions(currentRace)
 	if not options or #options == 0 then
 		return false, ("No evolutions available for %s"):format(tostring(currentRace))
@@ -497,11 +541,111 @@ function EvolutionManager.CompleteEvolution(player: Player, newRaceName: string,
 
 	local oldRace = playerData.Race
 	local oldStage = playerData.Stage
+	
+	-- Try using new centralized EvolutionTree system first
+	if EvolutionTree then
+		local result = EvolutionTree.ApplyEvolution(playerData, newRaceName)
+		
+		if result.error then
+			warn("[EvolutionManager] ApplyEvolution error:", result.error)
+			-- Fallback to old system below
+		else
+			-- Evolution applied successfully via new system
+			print(string.format("[Evolution] %s: %s(%s) -> %s(%s)", 
+				player.Name, result.oldSpecies, oldStage, result.newSpecies, playerData.Stage))
+			
+			-- Save previous moves for inheritance
+			local previousMoves = {}
+			for _, e in ipairs(playerData.Moves or {}) do
+				table.insert(previousMoves, e)
+			end
+			
+			-- Get starter moves for new race
+			local startersList = {}
+			if EvolutionTree.GetLearnsetAtLevel then
+				-- Get moves from learnset
+				local learnedMoves = EvolutionTree.GetAllLearnableMoves(newRaceName, playerData.Level or 1)
+				for _, moveId in ipairs(learnedMoves) do
+					local mv = Moves:GetMove(newRaceName, moveId) or Moves:GetMove(nil, moveId)
+					if mv then
+						table.insert(startersList, { move = mv, rarity = mv.rarity })
+					end
+				end
+			end
+			
+			-- Fallback to EvoDef if no learnset
+			if #startersList == 0 then
+				startersList = EvoDef:GetMovesForRace(newRaceName, {
+					personality  = playerData.Personality,
+					previousMoves= previousMoves,
+					stats        = playerData.Stats,
+				}) or {}
+			end
+			
+			-- Resolve move unlocks from evolution trigger (this handles inherited moves)
+			local gained = MoveUnlocks.ResolveUnlocks(playerData, "evolution", {
+				from = oldRace,
+				previousMoves = previousMoves
+			})
+			
+			-- Merge moves: previous moves + starters for new race
+			playerData.Moves = mergeMovesKeepingOld(playerData.Moves, startersList, newRaceName)
+			EvolutionManager.EnsureMovesSync(playerData)
+			
+			-- Update history
+			playerData.History = playerData.History or {}
+			table.insert(playerData.History, newRaceName)
+			
+			-- Destroy current model and rebuild
+			local currentModel = EvolutionManager.FindPlayerMonster(player)
+			if currentModel then
+				currentModel:Destroy()
+			end
+			
+			-- Rebuild with updated data
+			local okBuild, res = pcall(function()
+				return _G.SHARED.BuildMonster(playerData, player.UserId, { force = true })
+			end)
+			
+			if not okBuild or not res then
+				warn("[EvolutionManager] Build after evolution failed:", tostring(res))
+				return
+			end
+			
+			print("Evolution completed for " .. player.Name .. "'s " .. oldRace .. " -> " .. newRaceName)
+			
+			-- Reposition at old pivot
+			task.wait(0.2)
+			local newModel = EvolutionManager.FindPlayerMonster(player)
+			if newModel then
+				if oldPivot then newModel:PivotTo(oldPivot) end
+				
+				local hum = newModel:FindFirstChildOfClass("Humanoid")
+				if hum then
+					local hpStat = playerData.Stats.Hp or playerData.Stats.HP or hum.MaxHealth
+					local oldMax = hum.MaxHealth > 0 and hum.MaxHealth or 1
+					local ratio = math.clamp(hum.Health / oldMax, 0, 1)
+					hum.MaxHealth = math.max(1, math.floor(hpStat))
+					hum.Health = math.max(1, math.floor(hum.MaxHealth * ratio))
+				end
+				
+				newModel:SetAttribute("MP", playerData.Stats.Mp or playerData.Stats.MP or 50)
+				
+				if _G.SHARED and _G.SHARED.UpdateMonsterMoves then
+					_G.SHARED.UpdateMonsterMoves(newModel, playerData.Moves)
+				end
+			end
+			
+			-- Notify completion
+			EvolutionComplete:FireClient(player, newRaceName)
+			return
+		end
+	end
+	
+	-- Fallback to old system if EvolutionTree not available or failed
 	local newStage = Races:GetStage(newRaceName)
 
 	-- CRITICAL FIX: Update playerData with explicit assignments to ensure proxy persistence
-	-- The TrackValues proxy requires direct field assignment to trigger __newindex for tracking.
-	-- Storing Races:GetStage(newRaceName) in a local variable first ensures proper assignment.
 	playerData.Race = newRaceName
 	playerData.Stage = newStage
 
@@ -511,8 +655,6 @@ function EvolutionManager.CompleteEvolution(player: Player, newRaceName: string,
 
 	-- Apply evolution stat gains to the Stats table (in-place modification for proxy tracking)
 	applyEvolutionGainsInPlace(playerData.Stats, newStage)
-
-
 
 	-- Save previous moves for inheritance
 	local previousMoves = {}
@@ -620,6 +762,102 @@ function EvolutionManager.CheckEvolutionTrigger(player: Player, trigger: string,
 			player.Name, trigger, tostring(result)))
 		return false, result
 	end
+end
+
+-- ===== Level Up Processing =====
+
+-- Process level up with stat growth and evolution attempt unlock
+function EvolutionManager.ProcessLevelUp(player: Player, playerData)
+	if not player or not playerData then return false end
+	
+	-- Use new StatCalc system if available
+	if StatCalc and EvolutionTree then
+		local speciesData = EvolutionTree.GetSpeciesData(playerData.Race)
+		if speciesData then
+			-- Roll level up gains and recalculate stats
+			local gains, newStats = StatCalc.ProcessLevelUp(playerData, speciesData)
+			
+			-- Update monster stats
+			if newStats then
+				assignStatsInPlace(playerData.Stats, newStats)
+			end
+			
+			-- Reset evolution attempt lock (allows new attempt at this level)
+			if EvolutionTree.ResetAttemptLockOnLevelUp then
+				EvolutionTree.ResetAttemptLockOnLevelUp(playerData)
+			end
+			
+			-- Check for level-based move unlocks
+			local newMoves = EvolutionTree.GetLearnsetAtLevel(playerData.Race, playerData.Level)
+			for _, moveId in ipairs(newMoves) do
+				local mv = Moves:GetMove(playerData.Race, moveId) or Moves:GetMove(nil, moveId)
+				if mv then
+					-- Add to learned moves
+					playerData.LearnedMoves = playerData.LearnedMoves or {}
+					local alreadyKnown = false
+					for _, learned in ipairs(playerData.LearnedMoves) do
+						if learned.id == moveId then
+							alreadyKnown = true
+							break
+						end
+					end
+					
+					if not alreadyKnown then
+						table.insert(playerData.LearnedMoves, { 
+							id = moveId, 
+							when = os.time(), 
+							source = "levelup" 
+						})
+						
+						-- Add to current moves if space
+						local seen = {}
+						for _, e in ipairs(playerData.Moves or {}) do
+							local id = (e.move and e.move.id) or e.id
+							if id then seen[id] = true end
+						end
+						
+						if not seen[mv.id] then
+							playerData.Moves = playerData.Moves or {}
+							table.insert(playerData.Moves, { move = mv, rarity = mv.rarity })
+							
+							-- Trim to max 4 moves
+							if #playerData.Moves > 4 then
+								-- Remove lowest rarity non-BasicAttack move
+								local lowestIdx = nil
+								local lowestScore = 999
+								for i, e in ipairs(playerData.Moves) do
+									local id = (e.move and e.move.id) or e.id
+									if id ~= "BasicAttack" then
+										local score = rarityScore(e)
+										if score < lowestScore then
+											lowestScore = score
+											lowestIdx = i
+										end
+									end
+								end
+								if lowestIdx then
+									table.remove(playerData.Moves, lowestIdx)
+								end
+							end
+						end
+					end
+				end
+			end
+			
+			EvolutionManager.EnsureMovesSync(playerData)
+			
+			print(string.format("[LevelUp] %s reached level %d (gained stats: %s)", 
+				player.Name, playerData.Level, tostring(gains)))
+			
+			return true
+		end
+	end
+	
+	-- Fallback: basic level up without new system
+	print(string.format("[LevelUp] %s reached level %d (old system)", 
+		player.Name, playerData.Level))
+	
+	return true
 end
 
 -- ===== Inicialização e binding de Remotes =====
