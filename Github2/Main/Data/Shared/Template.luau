@@ -1,4 +1,4 @@
--- Updated Data Structure (Template)
+-- Updated Data Structure (Template) for New Evolution System
 return {
 	id = "1",
 	Name = "DefaultName",
@@ -6,25 +6,41 @@ return {
 	Stage = "Fledgeling",
 	Level = 1,
 	NewPlayer = true,
+	Version = "2.0.0", -- Matches .ENV version
+	
 	-- Evolution & Move Learning Fields
 	BaseRaceFamily = "Progenitor",
 	Bond = 0,
 	Wins = 0,
 	SessionTime = 0,
 	CareMistakes = 0,
-	Personality = "Unpredictable",
+	Personality = "Balanced",
 
 	-- Stats (with proper structure)
 	Stats = {
-		Hp = 100, 
-		Mp = 100,
-		Strength = 10, STR = 10,
-		Defense = 10, DEF = 10,
-		Skill = 10, SKL = 10,
-		Speed = 10, SPD = 10,
-		Intelligence = 10, INT = 10,
-		Luck = 10, LCK = 10
+		Hp = 25, 
+		Mp = 50,
+		Strength = 6,
+		Defense = 6,
+		Skill = 8,
+		Speed = 10,
+		Intelligence = 15,
+		Luck = 10,
+		-- Aliases for compatibility
+		STR = 6, DEF = 6, SKL = 8, SPD = 10, INT = 15, LCK = 10, HP = 25, MP = 50
 	},
+	
+	-- New Evolution System Fields
+	IVs = {
+		Hp = 0, Strength = 0, Defense = 0, Intelligence = 0, Speed = 0, Skill = 0
+	},
+	EVs = {
+		Hp = 0, Strength = 0, Defense = 0, Intelligence = 0, Speed = 0, Skill = 0
+	},
+	GrowthAccum = {
+		Hp = 0, Strength = 0, Defense = 0, Intelligence = 0, Speed = 0, Skill = 0
+	},
+	EvolutionAttempts = {}, -- Tracks evolution attempts per level
 
 	-- Move System
 	Moves = {
