@@ -1,5 +1,7 @@
 -- ReplicatedStorage/Modules/EvolutionDefs.lua
--- Digimon-like branching + convergence. Races decidem moves (com exceções opcionais).
+-- LEGACY MODULE: Kept for backward compatibility with move lookups
+-- Main evolution logic now uses Evolution/EvolutionTree.lua system
+-- This module provides fallback for GetMovesForRace and stage lookups
 
 local EvolutionDefs = {}
 
@@ -16,22 +18,22 @@ EvolutionDefs.StageCaps = {
 EvolutionDefs.StageOrder = { "Fledgeling","Rookie","Champion","Elder","Unique" }
 
 -- ===== Race Stage Mapping =====
+-- NOTE: Stage data is primarily sourced from Evolution/Data/MonsterForms.lua
+-- This is kept for backward compatibility
 EvolutionDefs.RaceStage = {
-	-- Raptor line
-	--Raptor="Fledgeling", Dino="Rookie", Beast="Champion", Dragon="Elder", Behemoth="Elder",
 	-- Construct / Core line
-	Core="Fledgeling", Golem="Rookie", Titan="Champion", Colossus="Elder", PrimordialConstruct="Unique",
-	-- Demonic line
-	Imp="Fledgeling", Devil="Rookie", Archdemon="Champion", AbyssLord="Elder",
+	Core="Fledgeling", Golem="Rookie", Titan="Champion", Colossus="Elder", IronColoss="Unique",
 	-- Progenitor / Reality line
-	RealitySeed="Fledgeling", CosmicWeaver="Champion", VoidWalker="Elder", Architect="Elder", PrimeConcept="Unique",
+	RealitySeed="Fledgeling", CosmicWeaver="Champion", VoidWalker="Elder", Architect="Elder", 
+	PrimeConcept="Unique", EntropicVoid="Unique",
 	-- Boxer / Lagomorph line
-	Hopling="Fledgeling", Pugilhare="Rookie", Strikeron="Champion", Monarchare="Elder",
-	-- Convergences
-	SteelBoxer="Elder", IronColoss="Unique", DreadBeast="Elder", SkyBehemoth="Elder",
-	NetherDragon="Unique", OrderArchitect="Unique", EntropicVoid="Unique",
+	Hopling="Fledgeling", Pugilhare="Rookie", Strikeron="Champion", Monarchare="Elder", SteelBoxer="Unique",
+	-- Raptor line
+	Dino="Rookie", Beast="Champion", Dragon="Elder", NetherDragon="Unique",
 }
 
+-- NOTE: Evolution chance calculation is now handled by Evolution/EvolutionTree.lua
+-- This function is kept for backward compatibility only
 function EvolutionDefs:GetEvolutionChance(currentRace, ctx, candidate)
 	if not candidate or not candidate.gates then return 0 end
 
@@ -128,11 +130,10 @@ local function normalizeEdges(list)
 	return out
 end
 
--- ===== Evolution Graph is now sourced from Races module =====
--- This provides unified evolution definitions across the codebase
--- Use GetCandidates() to access evolution paths
+-- ===== LEGACY API =====
+-- NOTE: Evolution logic is now handled by Evolution/EvolutionTree.lua
+-- These functions are kept for backward compatibility with Races module
 
--- ===== API =====
 function EvolutionDefs:GetStage(race)
 	-- Delegate to Races module for single source of truth
 	local ok, Races = pcall(function() return require(game.ReplicatedStorage.Modules.Races) end)
@@ -142,6 +143,7 @@ function EvolutionDefs:GetStage(race)
 	return self.RaceStage[race] or "Fledgeling"
 end
 
+-- DEPRECATED: Use Evolution/EvolutionTree.lua instead
 function EvolutionDefs:GetCandidates(currentRace, ctx)
 	-- Use Races module as primary source for evolution data
 	local ok, Races = pcall(function() return require(game.ReplicatedStorage.Modules.Races) end)
